@@ -35,7 +35,7 @@ extern void     pci_write_config_dword(uint8_t bus, uint8_t dev, uint8_t fn, uin
                             uint32_t val);
 extern uint8_t  inb (uint16_t port);
 extern void     outb(uint16_t port, uint8_t val);
-extern void     vmm_map(uint32_t* pd, uint32_t va, uint32_t pa, int flags);
+extern void     vmm_map(uint64_t* pd, uint64_t va, uint64_t pa, int flags);
 extern void     irq_spinlock_init   (irq_spinlock_t* lock);
 extern void     irq_spinlock_acquire(irq_spinlock_t* lock);
 extern void     irq_spinlock_release(irq_spinlock_t* lock);
@@ -83,10 +83,10 @@ static int               pcm_codec_addr;
 static irq_spinlock_t    hda_lock;
 static int               output_configured;
 
-static inline uint32_t* get_current_pd(void) {
-    uint32_t val;
+static inline uint64_t* get_current_pd(void) {
+    uint64_t val;
     __asm__ __volatile__("mov %%cr3, %0" : "=r"(val));
-    return (uint32_t*)val;
+    return (uint64_t*)val;
 }
 
 static inline uint32_t hda_reg_read(uint32_t reg) {
@@ -487,23 +487,25 @@ static int hda_init_controller(uint32_t mmio, uint32_t mmio_size) {
     return 0;
 }
 
-static int _hda_devfs_read(void *p, uint32_t off, uint32_t size, char *buf) {
+static int _hda_devfs_read(void *p, uint64_t off, uint32_t size, char *buf) {
     (void)p;
+    uint32_t off32 = (uint32_t)off;
     if (!output_configured || !pcm_buffer) return -1;
     uint32_t read_size = size;
-    if (off + read_size > HDA_PCM_BUFFER_SIZE)
-        read_size = HDA_PCM_BUFFER_SIZE - off;
-    memcpy(buf, pcm_buffer + off, read_size);
+    if (off32 + read_size > HDA_PCM_BUFFER_SIZE)
+        read_size = HDA_PCM_BUFFER_SIZE - off32;
+    memcpy(buf, pcm_buffer + off32, read_size);
     return (int)read_size;
 }
 
-static int _hda_devfs_write(void *p, uint32_t off, uint32_t size, char *buf) {
+static int _hda_devfs_write(void *p, uint64_t off, uint32_t size, char *buf) {
     (void)p;
+    uint32_t off32 = (uint32_t)off;
     if (!output_configured || !pcm_buffer) return -1;
     uint32_t write_size = size;
-    if (off + write_size > HDA_PCM_BUFFER_SIZE)
-        write_size = HDA_PCM_BUFFER_SIZE - off;
-    memcpy(pcm_buffer + off, buf, write_size);
+    if (off32 + write_size > HDA_PCM_BUFFER_SIZE)
+        write_size = HDA_PCM_BUFFER_SIZE - off32;
+    memcpy(pcm_buffer + off32, buf, write_size);
     return (int)write_size;
 }
 
