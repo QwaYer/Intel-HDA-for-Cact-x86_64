@@ -35,7 +35,10 @@ extern void     pci_write_config_dword(uint8_t bus, uint8_t dev, uint8_t fn, uin
                             uint32_t val);
 extern uint8_t  inb (uint16_t port);
 extern void     outb(uint16_t port, uint8_t val);
-extern void     vmm_map(uint64_t* pd, uint64_t va, uint64_t pa, int flags);
+/* Physical address -> the kernel direct-map VA at which it can be
+ * dereferenced.  Device MMIO lives in the direct map (uncached), shared by
+ * every address space, so a BAR needs no vmm_map() of its own. */
+extern void*    vmm_p2v(uint64_t phys);
 extern void     irq_spinlock_init   (irq_spinlock_t* lock);
 extern void     irq_spinlock_acquire(irq_spinlock_t* lock);
 extern void     irq_spinlock_release(irq_spinlock_t* lock);
@@ -55,7 +58,7 @@ extern int            unregister_chrdev(const char* name);
 #define PAGE_PCD     0x10
 
 
-static uint32_t          hda_mmio_base;
+static uint64_t          hda_mmio_base;
 static uint32_t          hda_mmio_size;
 static hda_codec_info_t  hda_codecs[HDA_MAX_CODECS];
 static hda_widget_info_t hda_widgets[64];
@@ -82,12 +85,6 @@ static int               pcm_codec_addr;
 
 static irq_spinlock_t    hda_lock;
 static int               output_configured;
-
-static inline uint64_t* get_current_pd(void) {
-    uint64_t val;
-    __asm__ __volatile__("mov %%cr3, %0" : "=r"(val));
-    return (uint64_t*)val;
-}
 
 static inline uint32_t hda_reg_read(uint32_t reg) {
     return *(volatile uint32_t*)(uintptr_t)(hda_mmio_base + reg);
@@ -416,11 +413,7 @@ static int hda_reset_controller(void) {
 }
 
 static int hda_init_controller(uint32_t mmio, uint32_t mmio_size) {
-    for (uint32_t off = 0; off < mmio_size; off += 0x1000)
-        vmm_map(get_current_pd(), mmio + off, mmio + off,
-                PAGE_PRESENT | PAGE_RW | PAGE_PCD | PAGE_PWT);
-
-    hda_mmio_base = mmio;
+    hda_mmio_base = (uint64_t)(uintptr_t)vmm_p2v(mmio);
     hda_mmio_size = mmio_size;
 
     if (hda_reset_controller() < 0) return -1;
